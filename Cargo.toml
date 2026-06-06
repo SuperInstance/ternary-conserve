@@ -1,0 +1,20 @@
+[package]
+name = "ternary-conserve"
+version = "0.1.0"
+edition = "2021"
+description = "Parametric conservation across domains — fish stocks, fuel, battery, inference tokens, crew attention"
+authors = ["Ternary Collective <construct@ternary.systems>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SuperInstance/ternary-conserve"
+keywords = ["ternary", "conservation", "budget", "resource", "monitoring"]
+categories = ["science::ecology", "embedded::no-std"]
+
+[dependencies]
+ternary-types = { path = "../ternary-types", version = "0.1" }
+serde = { version = "1", optional = true, features = ["derive"] }
+
+[features]
+default = []
+serde = ["dep:serde", "ternary-types/serde"]
+
+[dev-dependencies]
