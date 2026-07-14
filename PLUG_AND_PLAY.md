@@ -65,9 +65,14 @@ assert!(event.is_none()); // peak is the max, not a threshold
 
 ### 3. React to Threshold Crossing
 
+`Ternary` is re-exported by this crate, so you can match on an event's
+severity directly:
+
 ```rust
+use ternary_conserve::Ternary;
+
 // Consume down to warning level
-for _ in 0..5 { fuel.tick(10.0); }
+for _ in 0..5 { let _ = fuel.tick(10.0); }
 
 if let Some(event) = fuel.tick(5.0) {
     match event.severity {
@@ -195,4 +200,4 @@ The crate is `#![no_std]` by default (uses `alloc`). No external dependencies re
 
 ## License
 
-MIT OR Apache-2.0
+MIT

@@ -44,4 +44,4 @@ See [`PLUG_AND_PLAY.md`](./PLUG_AND_PLAY.md) for full documentation.
 
 ## License
 
-MIT OR Apache-2.0
+MIT
