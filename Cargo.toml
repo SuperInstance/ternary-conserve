@@ -10,7 +10,7 @@ keywords = ["ternary", "conservation", "budget", "resource", "monitoring"]
 categories = ["science::ecology", "embedded::no-std"]
 
 [dependencies]
-ternary-types = { path = "../ternary-types", version = "0.1" }
+ternary-types = { git = "https://github.com/SuperInstance/ternary-types.git", features = ["std"] }
 serde = { version = "1", optional = true, features = ["derive"] }
 
 [features]
