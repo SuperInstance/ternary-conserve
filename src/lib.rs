@@ -747,7 +747,7 @@ mod tests {
         // Consume down to warning threshold (30.0)
         let _ = d.tick(30.0); // consumed = 30, remaining = 70
         let _ = d.tick(30.0); // consumed = 60, remaining = 40 — still > 30
-        assert!(d.remaining() > 30.0 || d.remaining() == 30.0);
+        assert_eq!(d.remaining(), 40.0); // exact hand value, not a loose bound
 
         // One more tick should cross into warning
         let _ = d.tick(10.0); // consumed = 70, remaining = 30
@@ -833,7 +833,15 @@ mod tests {
             },
         );
         let event = d.tick(1);
-        assert!(event.is_some());
+        // total=0, so any consumption is an overdraft: remaining =
+        // 0.checked_sub(1) = None -> BudgetExceeded, not a threshold event.
+        let event = event.expect("overdraft on empty budget must report");
+        assert_eq!(event.severity, Ternary::Negative);
+        assert!(
+            matches!(&event.kind, EventKind::BudgetExceeded { actual, limit } if *actual == 1 && *limit == 0),
+            "expected BudgetExceeded{{actual:1, limit:0}}, got {:?}",
+            event.kind
+        );
     }
 
     #[test]
