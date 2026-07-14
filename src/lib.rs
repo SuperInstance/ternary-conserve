@@ -71,7 +71,11 @@ use alloc::collections::VecDeque;
 use alloc::string::String;
 use core::fmt::Debug;
 use core::time::Duration;
-use ternary_types::Ternary;
+
+/// Re-export of [`ternary_types::Ternary`] — the three-valued severity used by
+/// [`ConservationEvent`]. Re-exported here so callers can match on an event's
+/// severity without adding `ternary-types` as a separate dependency.
+pub use ternary_types::Ternary;
 
 /// A measurable resource unit.
 ///
@@ -373,10 +377,14 @@ impl<T: ResourceUnit> ConservationDomain<T> {
         profile: Profile<T>,
         thresholds: ThresholdSet<T>,
     ) -> Self {
-        // Validate threshold ordering if PartialOrd is available
-        debug_assert!(
+        // Validate threshold ordering: warning >= critical >= floor.
+        // This is a hard `assert!` (not `debug_assert!`) because the doc
+        // contract promises a panic on invalid ordering, and degenerate
+        // threshold configurations silently produce wrong/missing events
+        // in release builds if left unchecked.
+        assert!(
             thresholds.warning >= thresholds.critical
-                || thresholds.critical >= thresholds.floor,
+                && thresholds.critical >= thresholds.floor,
             "thresholds must be ordered: warning >= critical >= floor"
         );
 
@@ -440,7 +448,7 @@ impl<T: ResourceUnit> ConservationDomain<T> {
             }
         };
 
-        // 3. Check thresholds
+        // 3. Check thresholds (floor > critical > warning)
         if remaining <= self.thresholds.floor {
             // Hard stop — critical cascade
             let event = ConservationEvent {
@@ -487,7 +495,7 @@ impl<T: ResourceUnit> ConservationDomain<T> {
             return Some(event);
         }
 
-        // 5. Nominal — no event
+        // 4. Nominal — no event
         None
     }
 
@@ -831,18 +839,28 @@ mod tests {
     }
 
     #[test]
-    fn test_history_capped() {
-        let d = test_domain();
-        // Trigger many events by crossing thresholds repeatedly
+    fn test_history_actually_capped_at_1024() {
+        // This genuinely exercises the 1024-entry cap on a *single* domain.
+        // Once `remaining` drops to/below the floor, every subsequent tick —
+        // even of zero — re-emits a floor event, so we can accumulate far more
+        // than MAX_HISTORY events on one domain and verify trimming kicks in.
+        let mut d = test_domain();
+        // total=100, floor=5: consume 96 so remaining=4 <= 5  (floor event #1)
+        let _ = d.tick(96.0);
+        // remaining stays at 4, so each of these re-emits a floor event
         for _ in 0..2000 {
-            let mut fresh = test_domain();
-            let _ = fresh.tick(90.0); // below warning
-            let _ = fresh.tick(20.0); // well below
-            // Collect events isn't important — just ensure no OOM
+            let _ = d.tick(0.0);
         }
-
-        // Verify the original domain still works
-        assert_eq!(d.remaining(), 100.0);
+        assert!(
+            d.history.len() <= 1024,
+            "history must be capped at 1024, got {}",
+            d.history.len()
+        );
+        assert!(
+            d.history.len() > 512,
+            "history should have accumulated many events, got {}",
+            d.history.len()
+        );
     }
 
     #[test]
@@ -907,5 +925,32 @@ mod tests {
         assert!(!d.history.is_empty());
         d.clear_history();
         assert!(d.history.is_empty());
+    }
+
+    /// The old threshold guard used `||` (OR), so an ordering where *only*
+    /// `critical >= floor` held (but `warning < critical`) slipped through.
+    /// This must now panic because the contract requires a total ordering.
+    #[test]
+    #[should_panic(expected = "thresholds must be ordered")]
+    fn test_invalid_threshold_order_warn_below_critical_panics() {
+        // warning=10 < critical=20 is invalid (warning must be >= critical).
+        let _ = ConservationDomain::new(
+            "bad",
+            Budget { total: 100.0_f64, allocated: 100.0, consumed: 0.0 },
+            Profile { expected_rate: 10.0, peak: 20.0, variance: 0.1 },
+            ThresholdSet { warning: 10.0, critical: 20.0, floor: 5.0 },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "thresholds must be ordered")]
+    fn test_invalid_threshold_order_critical_below_floor_panics() {
+        // critical=5 < floor=20 is invalid.
+        let _ = ConservationDomain::new(
+            "bad",
+            Budget { total: 100.0_f64, allocated: 100.0, consumed: 0.0 },
+            Profile { expected_rate: 10.0, peak: 20.0, variance: 0.1 },
+            ThresholdSet { warning: 30.0, critical: 5.0, floor: 20.0 },
+        );
     }
 }
