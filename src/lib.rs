@@ -2,6 +2,14 @@
 //!
 //! Parametric conservation across resource domains.
 //!
+//! **When to use this:** you have a finite, depletable budget (fuel, battery
+//! charge, fish-stock biomass, LLM token quota, crew attention-hours) and you
+//! want to *tick* consumption against it while automatically emitting events
+//! whenever a threshold is crossed or the budget runs out. It gives you one
+//! generic, `no_std`-friendly abstraction that turns "how much is left?" into
+//! actionable [`Ternary`] severity signals — instead of hand-rolling a bespoke
+//! budget+alarm struct per resource type.
+//!
 //! The conservation thesis is central to the Ternary philosophy: measurable resources
 //! should be budgeted, profiled, detected, and reported in a closed-loop cycle.
 //!
@@ -383,8 +391,7 @@ impl<T: ResourceUnit> ConservationDomain<T> {
         // threshold configurations silently produce wrong/missing events
         // in release builds if left unchecked.
         assert!(
-            thresholds.warning >= thresholds.critical
-                && thresholds.critical >= thresholds.floor,
+            thresholds.warning >= thresholds.critical && thresholds.critical >= thresholds.floor,
             "thresholds must be ordered: warning >= critical >= floor"
         );
 
@@ -424,9 +431,7 @@ impl<T: ResourceUnit> ConservationDomain<T> {
         let timestamp = Duration::from_secs(self.ticks);
 
         // 1. Update budget consumption
-        self.budget.consumed = T::from_f64(
-            self.budget.consumed.to_f64() + consumed.to_f64(),
-        );
+        self.budget.consumed = T::from_f64(self.budget.consumed.to_f64() + consumed.to_f64());
 
         // 2. Calculate remaining
         let remaining = match self.budget.total.remaining(&self.budget.consumed) {
@@ -601,7 +606,7 @@ impl<T: ResourceUnit> ConservationDomain<T> {
 mod serde_impl {
     use serde::{Deserialize, Serialize};
 
-    use crate::{Budget, ConservationDomain, ConservationEvent, EventKind, Profile, ResourceUnit, ThresholdSet};
+    use crate::{Budget, Profile, ResourceUnit, ThresholdSet};
 
     impl<T: ResourceUnit + Serialize> Serialize for Budget<T> {
         fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -700,9 +705,21 @@ mod tests {
     fn test_domain() -> ConservationDomain<f64> {
         ConservationDomain::new(
             "test_domain",
-            Budget { total: 100.0, allocated: 100.0, consumed: 0.0 },
-            Profile { expected_rate: 10.0, peak: 20.0, variance: 0.1 },
-            ThresholdSet { warning: 30.0, critical: 15.0, floor: 5.0 },
+            Budget {
+                total: 100.0,
+                allocated: 100.0,
+                consumed: 0.0,
+            },
+            Profile {
+                expected_rate: 10.0,
+                peak: 20.0,
+                variance: 0.1,
+            },
+            ThresholdSet {
+                warning: 30.0,
+                critical: 15.0,
+                floor: 5.0,
+            },
         )
     }
 
@@ -755,8 +772,8 @@ mod tests {
         let mut d = test_domain();
 
         // Blast through to critical
-        let _ = d.tick(50.0);  // consumed=50, remaining=50
-        let _ = d.tick(40.0);  // consumed=90, remaining=10 < 15 (critical)
+        let _ = d.tick(50.0); // consumed=50, remaining=50
+        let _ = d.tick(40.0); // consumed=90, remaining=10 < 15 (critical)
 
         let event = d.tick(0.0);
         assert!(event.is_some());
@@ -799,9 +816,21 @@ mod tests {
         // An already-empty budget: tick should immediately report
         let mut d = ConservationDomain::new(
             "empty",
-            Budget { total: 0_u32, allocated: 0, consumed: 0 },
-            Profile { expected_rate: 0, peak: 0, variance: 0.0 },
-            ThresholdSet { warning: 0, critical: 0, floor: 0 },
+            Budget {
+                total: 0_u32,
+                allocated: 0,
+                consumed: 0,
+            },
+            Profile {
+                expected_rate: 0,
+                peak: 0,
+                variance: 0.0,
+            },
+            ThresholdSet {
+                warning: 0,
+                critical: 0,
+                floor: 0,
+            },
         );
         let event = d.tick(1);
         assert!(event.is_some());
@@ -867,9 +896,21 @@ mod tests {
     fn test_integer_resource_unit() {
         let mut d: ConservationDomain<u32> = ConservationDomain::new(
             "fuel_liters",
-            Budget { total: 50, allocated: 50, consumed: 0 },
-            Profile { expected_rate: 5, peak: 10, variance: 0.2 },
-            ThresholdSet { warning: 15, critical: 8, floor: 3 },
+            Budget {
+                total: 50,
+                allocated: 50,
+                consumed: 0,
+            },
+            Profile {
+                expected_rate: 5,
+                peak: 10,
+                variance: 0.2,
+            },
+            ThresholdSet {
+                warning: 15,
+                critical: 8,
+                floor: 3,
+            },
         );
 
         assert_eq!(d.remaining(), 50);
@@ -899,7 +940,10 @@ mod tests {
         };
         assert_eq!(cascade.domain, "fuel");
         match &cascade.kind {
-            EventKind::Cascade { trigger, affected_domain } => {
+            EventKind::Cascade {
+                trigger,
+                affected_domain,
+            } => {
                 assert!(trigger.contains("battery"));
                 assert_eq!(*affected_domain, "battery");
             }
@@ -936,9 +980,21 @@ mod tests {
         // warning=10 < critical=20 is invalid (warning must be >= critical).
         let _ = ConservationDomain::new(
             "bad",
-            Budget { total: 100.0_f64, allocated: 100.0, consumed: 0.0 },
-            Profile { expected_rate: 10.0, peak: 20.0, variance: 0.1 },
-            ThresholdSet { warning: 10.0, critical: 20.0, floor: 5.0 },
+            Budget {
+                total: 100.0_f64,
+                allocated: 100.0,
+                consumed: 0.0,
+            },
+            Profile {
+                expected_rate: 10.0,
+                peak: 20.0,
+                variance: 0.1,
+            },
+            ThresholdSet {
+                warning: 10.0,
+                critical: 20.0,
+                floor: 5.0,
+            },
         );
     }
 
@@ -948,9 +1004,21 @@ mod tests {
         // critical=5 < floor=20 is invalid.
         let _ = ConservationDomain::new(
             "bad",
-            Budget { total: 100.0_f64, allocated: 100.0, consumed: 0.0 },
-            Profile { expected_rate: 10.0, peak: 20.0, variance: 0.1 },
-            ThresholdSet { warning: 30.0, critical: 5.0, floor: 20.0 },
+            Budget {
+                total: 100.0_f64,
+                allocated: 100.0,
+                consumed: 0.0,
+            },
+            Profile {
+                expected_rate: 10.0,
+                peak: 20.0,
+                variance: 0.1,
+            },
+            ThresholdSet {
+                warning: 30.0,
+                critical: 5.0,
+                floor: 20.0,
+            },
         );
     }
 }
