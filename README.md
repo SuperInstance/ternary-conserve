@@ -2,6 +2,18 @@
 
 Parametric conservation across resource domains.
 
+**When to use this:** you have a finite, depletable budget (fuel, battery charge,
+fish-stock biomass, LLM token quota, crew attention-hours) and you want to
+*tick* consumption against it while automatically emitting events whenever a
+threshold is crossed or the budget runs out. Use it when you need a single,
+generic, `no_std`-friendly abstraction that turns "how much is left?" into
+actionable `Negative`/`Neutral` severity signals — instead of hand-rolling a
+ bespoke budget+alarm struct per resource type.
+
+**When not to:** if you only need a plain counter, or need rich statistical
+forecasting (this crate does deterministic threshold checks and a simple
+rate-based depletion projection, not probabilistic prediction).
+
 **The conservation thesis** — every measurable resource follows a closed-loop cycle:
 
 ```
@@ -44,4 +56,4 @@ See [`PLUG_AND_PLAY.md`](./PLUG_AND_PLAY.md) for full documentation.
 
 ## License
 
-MIT OR Apache-2.0
+MIT
